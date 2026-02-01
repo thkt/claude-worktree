@@ -41,6 +41,7 @@ fuzzy_select() {
   local items="$1"
   local finder="${WT_FUZZY_FINDER:-}"
   if [ -n "$finder" ]; then
+    command -v "$finder" &>/dev/null || err "fuzzy finder not found: $finder"
     echo "$items" | "$finder"
     return
   fi
@@ -58,6 +59,7 @@ _WT_BRANCHES=()
 declare -A _WT_PATHS=()
 
 parse_worktrees() {
+  git worktree prune 2>/dev/null || true
   _WT_BRANCHES=()
   _WT_PATHS=()
   local wt_path=""

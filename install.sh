@@ -9,15 +9,30 @@ cp "$SCRIPT_DIR/bin/wt-core" "$INSTALL_DIR/wt-core"
 chmod +x "$INSTALL_DIR/wt-core"
 
 SHELL_FUNC='wt() { if [ "${1:-}" = "ls" ]; then wt-core "$@"; else local output; output="$(wt-core "$@")" || return $?; local lines; lines=$(echo "$output" | wc -l); [[ "$lines" -eq 1 && "$output" =~ ^cd\  ]] || return 1; eval "$output"; fi; }'
-ZSHRC="${HOME}/.zshrc"
 
-if ! grep -q 'wt()' "$ZSHRC" 2>/dev/null; then
-  echo "" >> "$ZSHRC"
-  { echo "# claude-worktree"; echo "$SHELL_FUNC"; } >> "$ZSHRC"
-  echo "▸ Added wt() to $ZSHRC"
+detect_rc_file() {
+  local shell_name
+  shell_name="$(basename "${SHELL:-/bin/bash}")"
+  case "$shell_name" in
+    zsh)  echo "${HOME}/.zshrc" ;;
+    bash) echo "${HOME}/.bashrc" ;;
+    *)    echo "" ;;
+  esac
+}
+
+RC_FILE="$(detect_rc_file)"
+
+if [ -z "$RC_FILE" ]; then
+  echo "▸ Unsupported shell: $SHELL"
+  echo "▸ Add manually: $SHELL_FUNC"
 else
-  echo "▸ wt() already exists in $ZSHRC"
+  if ! grep -q 'wt()' "$RC_FILE" 2>/dev/null; then
+    echo "" >> "$RC_FILE"
+    { echo "# claude-worktree"; echo "$SHELL_FUNC"; } >> "$RC_FILE"
+    echo "▸ Added wt() to $RC_FILE"
+  else
+    echo "▸ wt() already exists in $RC_FILE"
+  fi
+  echo "▸ Installed wt-core to $INSTALL_DIR"
+  echo "▸ Run: source $RC_FILE"
 fi
-
-echo "▸ Installed wt-core to $INSTALL_DIR"
-echo "▸ Run: source $ZSHRC"
