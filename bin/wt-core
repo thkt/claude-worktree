@@ -169,7 +169,7 @@ cmd_cd() {
     local selected
     selected="$(fuzzy_select "$branches")"
     [ -n "$selected" ] || err "no worktree selected"
-    local wt_dir="${_WT_PATHS[$selected]}"
+    local wt_dir="${_WT_PATHS[$selected]:-}"
     [ -n "$wt_dir" ] || err "worktree not found: $selected"
     echo "$wt_dir"
   fi
@@ -191,7 +191,7 @@ cmd_ls() {
   done
 
   for name in "${_WT_BRANCHES[@]}"; do
-    local wt_dir="${_WT_PATHS[$name]}"
+    local wt_dir="${_WT_PATHS[$name]:-}"
     local resolved_wt
     resolved_wt="$(cd "$wt_dir" 2>/dev/null && pwd -P)" || continue
 
