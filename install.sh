@@ -44,7 +44,6 @@ if [ -z "$RC_FILE" ]; then
   echo "$SHELL_BLOCK"
 else
   if grep -q "$MARKER_BEGIN" "$RC_FILE" 2>/dev/null; then
-    # Replace existing block
     tmp="$(mktemp)"
     awk -v begin="$MARKER_BEGIN" -v end="$MARKER_END" -v block="$SHELL_BLOCK" '
       $0 == begin { skip=1; print block; next }
