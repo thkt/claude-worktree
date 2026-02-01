@@ -142,7 +142,7 @@ cmd_new() {
     fi
   )
 
-  echo "cd '$wt_dir'"
+  printf 'cd %q\n' "$wt_dir"
 }
 
 resolve_worktree_path() {
@@ -160,7 +160,7 @@ cmd_cd() {
   if [ -n "${1:-}" ]; then
     local wt_dir
     wt_dir="$(resolve_worktree_path "$1")" || err "worktree not found: $1"
-    echo "cd '$wt_dir'"
+    printf 'cd %q\n' "$wt_dir"
   else
     local branches
     branches="$(list_worktree_branches)"
@@ -169,7 +169,7 @@ cmd_cd() {
     [ -n "$selected" ] || err "no worktree selected"
     local wt_dir
     wt_dir="$(resolve_worktree_path "$selected")" || err "worktree not found: $selected"
-    echo "cd '$wt_dir'"
+    printf 'cd %q\n' "$wt_dir"
   fi
 }
 
@@ -195,7 +195,7 @@ cmd_ls() {
     resolved_wt="$(cd "$wt_dir" && pwd -P)"
 
     local mark="  "
-    [[ "$current_dir" == "$resolved_wt"* ]] && mark="★ "
+    [[ "$current_dir/" == "$resolved_wt/"* ]] && mark="★ "
 
     local changes
     changes=$(git -C "$wt_dir" status --short 2>/dev/null | wc -l | tr -d ' ')
@@ -245,7 +245,7 @@ cmd_rm() {
   current_dir="$(pwd -P)"
   local resolved_wt
   resolved_wt="$(cd "$wt_dir" && pwd -P)"
-  [[ "$current_dir" == "$resolved_wt"* ]] && err "cannot remove current worktree (cd out first)"
+  [[ "$current_dir/" == "$resolved_wt/"* ]] && err "cannot remove current worktree (cd out first)"
 
   if git -C "$wt_dir" status --short | grep -q .; then
     err "worktree has uncommitted changes: $branch"

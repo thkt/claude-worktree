@@ -26,7 +26,7 @@ teardown() {
   run wt-core new feature-x
   [ "$status" -eq 0 ]
   [ -d "$WT_BASE/feature-x" ]
-  [[ "$output" == *"cd '$WT_BASE/feature-x'"* ]]
+  [[ "$output" == *"cd $WT_BASE/feature-x"* ]]
 }
 
 @test "T-02: wt new with existing branch checks it out" {
@@ -162,7 +162,7 @@ EOF
 
   run wt-core cd feature-cd
   [ "$status" -eq 0 ]
-  [[ "$output" == *"cd '$WT_BASE/feature-cd'"* ]]
+  [[ "$output" == *"cd $WT_BASE/feature-cd"* ]]
 }
 
 @test "T-10: wt cd without args fails without fuzzy finder" {
@@ -263,12 +263,12 @@ EOF
   cd "$REPO_DIR"
   run wt-core new feature/auth
   [ "$status" -eq 0 ]
-  [[ "$output" == *"cd '"*"feature/auth'"* ]]
+  [[ "$output" == *"cd "*"feature/auth"* ]]
 
   cd "$REPO_DIR"
   run wt-core cd feature/auth
   [ "$status" -eq 0 ]
-  [[ "$output" == *"cd '"*"feature/auth'"* ]]
+  [[ "$output" == *"cd "*"feature/auth"* ]]
 
   cd "$REPO_DIR"
   run wt-core ls
@@ -278,4 +278,22 @@ EOF
   cd "$REPO_DIR"
   run wt-core rm feature/auth
   [ "$status" -eq 0 ]
+}
+
+@test "T-17: commands work when run from inside a worktree" {
+  cd "$REPO_DIR"
+  run wt-core new feature-inner
+  [ "$status" -eq 0 ]
+  run wt-core new feature-other
+  [ "$status" -eq 0 ]
+
+  cd "$WT_BASE/feature-inner"
+  run wt-core ls
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature-inner"* ]]
+  [[ "$output" == *"feature-other"* ]]
+
+  run wt-core cd feature-other
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cd "*"feature-other"* ]]
 }
