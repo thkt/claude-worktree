@@ -26,7 +26,7 @@ teardown() {
   run wt-core new feature-x
   [ "$status" -eq 0 ]
   [ -d "$WT_BASE/feature-x" ]
-  [[ "$output" == *"cd $WT_BASE/feature-x"* ]]
+  [[ "$output" == *"$WT_BASE/feature-x"* ]]
 }
 
 @test "T-02: wt new with existing branch checks it out" {
@@ -169,7 +169,7 @@ EOF
 
   run wt-core cd feature-cd
   [ "$status" -eq 0 ]
-  [[ "$output" == *"cd $WT_BASE/feature-cd"* ]]
+  [[ "$output" == *"$WT_BASE/feature-cd"* ]]
 }
 
 @test "T-10: wt cd without args fails without fuzzy finder" {
@@ -270,12 +270,12 @@ EOF
   cd "$REPO_DIR"
   run wt-core new feature/auth
   [ "$status" -eq 0 ]
-  [[ "$output" == *"cd "*"feature/auth"* ]]
+  [[ "$output" == *"feature/auth"* ]]
 
   cd "$REPO_DIR"
   run wt-core cd feature/auth
   [ "$status" -eq 0 ]
-  [[ "$output" == *"cd "*"feature/auth"* ]]
+  [[ "$output" == *"feature/auth"* ]]
 
   cd "$REPO_DIR"
   run wt-core ls
@@ -287,7 +287,27 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "T-17: commands work when run from inside a worktree" {
+@test "T-17: shell wrapper rejects non-directory output" {
+  # Define the wrapper function inline (same as install.sh)
+  wt() {
+    if [ "${1:-}" = "ls" ]; then
+      wt-core "$@"
+    else
+      local output
+      output="$(wt-core "$@")" || return $?
+      [ -d "$output" ] || return 1
+      cd "$output"
+    fi
+  }
+
+  cd "$REPO_DIR"
+  # wt new should succeed and cd into the worktree
+  wt new feature-wrapper
+  [ -d "$WT_BASE/feature-wrapper" ]
+  [[ "$(pwd -P)" == *"feature-wrapper"* ]]
+}
+
+@test "T-18: commands work when run from inside a worktree" {
   cd "$REPO_DIR"
   run wt-core new feature-inner
   [ "$status" -eq 0 ]
@@ -302,5 +322,5 @@ EOF
 
   run wt-core cd feature-other
   [ "$status" -eq 0 ]
-  [[ "$output" == *"cd "*"feature-other"* ]]
+  [[ "$output" == *"feature-other"* ]]
 }

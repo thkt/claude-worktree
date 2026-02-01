@@ -8,7 +8,23 @@ mkdir -p "$INSTALL_DIR"
 cp "$SCRIPT_DIR/bin/wt-core" "$INSTALL_DIR/wt-core"
 chmod +x "$INSTALL_DIR/wt-core"
 
-SHELL_FUNC='wt() { if [ "${1:-}" = "ls" ]; then wt-core "$@"; else local output; output="$(wt-core "$@")" || return $?; local lines; lines=$(echo "$output" | wc -l); [[ "$lines" -eq 1 && "$output" =~ ^cd\  ]] || return 1; eval "$output"; fi; }'
+MARKER_BEGIN="# BEGIN claude-worktree"
+MARKER_END="# END claude-worktree"
+
+read -r -d '' SHELL_BLOCK <<'BLOCK' || true
+# BEGIN claude-worktree
+wt() {
+  if [ "${1:-}" = "ls" ]; then
+    wt-core "$@"
+  else
+    local output
+    output="$(wt-core "$@")" || return $?
+    [ -d "$output" ] || return 1
+    cd "$output"
+  fi
+}
+# END claude-worktree
+BLOCK
 
 detect_rc_file() {
   local shell_name
@@ -24,14 +40,23 @@ RC_FILE="$(detect_rc_file)"
 
 if [ -z "$RC_FILE" ]; then
   echo "▸ Unsupported shell: $SHELL"
-  echo "▸ Add manually: $SHELL_FUNC"
+  echo "▸ Add manually:"
+  echo "$SHELL_BLOCK"
 else
-  if ! grep -q 'wt()' "$RC_FILE" 2>/dev/null; then
-    echo "" >> "$RC_FILE"
-    { echo "# claude-worktree"; echo "$SHELL_FUNC"; } >> "$RC_FILE"
-    echo "▸ Added wt() to $RC_FILE"
+  if grep -q "$MARKER_BEGIN" "$RC_FILE" 2>/dev/null; then
+    # Replace existing block
+    tmp="$(mktemp)"
+    awk -v begin="$MARKER_BEGIN" -v end="$MARKER_END" -v block="$SHELL_BLOCK" '
+      $0 == begin { skip=1; print block; next }
+      $0 == end { skip=0; next }
+      !skip { print }
+    ' "$RC_FILE" > "$tmp"
+    mv "$tmp" "$RC_FILE"
+    echo "▸ Updated wt() in $RC_FILE"
   else
-    echo "▸ wt() already exists in $RC_FILE"
+    echo "" >> "$RC_FILE"
+    echo "$SHELL_BLOCK" >> "$RC_FILE"
+    echo "▸ Added wt() to $RC_FILE"
   fi
   echo "▸ Installed wt-core to $INSTALL_DIR"
   echo "▸ Run: source $RC_FILE"
