@@ -41,7 +41,7 @@ wt ls
 ```
 ★ feature-auth    3 changed  ↑2 ↓0  fix: add token validation
   bugfix-123      clean      ↑0 ↓3  refactor: simplify query
-  main            clean      ↑0 ↓0  chore: update deps
+  feature-api     clean      ↑0 ↓0  feat: add REST endpoints
 ```
 
 ### Remove a worktree

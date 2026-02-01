@@ -18,7 +18,7 @@ setup() {
 
 teardown() {
   cd /
-  rm -rf "$TEST_DIR"
+  [ -n "${TEST_DIR:-}" ] && rm -rf "$TEST_DIR"
 }
 
 @test "T-01: wt new creates worktree at correct path" {

@@ -50,6 +50,7 @@ else
       $0 == end { skip=0; next }
       !skip { print }
     ' "$RC_FILE" > "$tmp"
+    chmod --reference="$RC_FILE" "$tmp" 2>/dev/null || chmod "$(stat -f '%Lp' "$RC_FILE")" "$tmp" 2>/dev/null || true
     mv "$tmp" "$RC_FILE"
     echo "▸ Updated wt() in $RC_FILE"
   else
