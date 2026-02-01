@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() { echo "▸ $*" >&2; }
+err() { echo "error: $*" >&2; exit 1; }
+
+validate_git_repo() {
+  git rev-parse --show-toplevel &>/dev/null || err "not a git repository"
+}
+
+get_repo_info() {
+  REPO_ROOT="$(git rev-parse --show-toplevel)"
+  local git_common
+  git_common="$(git rev-parse --git-common-dir 2>/dev/null)"
+  if [ -n "$git_common" ] && [[ "$git_common" != "$REPO_ROOT/.git" ]]; then
+    local main_git_dir
+    main_git_dir="$(cd "$git_common" && pwd -P)"
+    REPO_ROOT="$(dirname "$main_git_dir")"
+  fi
+  REPO_NAME="$(basename "$REPO_ROOT")"
+  WT_BASE="$(dirname "$REPO_ROOT")/worktrees/$REPO_NAME"
+}
+
+resolve_base() {
+  local explicit="${1:-}"
+  if [ -n "$explicit" ]; then
+    git rev-parse --verify "$explicit" &>/dev/null || err "branch not found: $explicit"
+    echo "$explicit"
+    return
+  fi
+  for candidate in main develop master; do
+    if git rev-parse --verify "$candidate" &>/dev/null; then
+      echo "$candidate"
+      return
+    fi
+  done
+  err "base branch not found (tried: main, develop, master)"
+}
+
+fuzzy_select() {
+  local items="$1"
+  local finder="${WT_FUZZY_FINDER:-}"
+  if [ -n "$finder" ]; then
+    echo "$items" | "$finder"
+    return
+  fi
+  if command -v sk &>/dev/null; then
+    echo "$items" | sk
+  elif command -v fzf &>/dev/null; then
+    echo "$items" | fzf
+  else
+    echo "$items" >&2
+    err "install sk or fzf for interactive selection"
+  fi
+}
+
+list_worktree_branches() {
+  [ -d "$WT_BASE" ] || err "no worktrees found"
+  ls -1 "$WT_BASE"
+}
+
+cmd_new() {
+  [ -z "${1:-}" ] && { echo "usage: wt new <branch> [base]" >&2; exit 1; }
+  validate_git_repo
+  get_repo_info
+
+  local branch="$1"
+  local wt_dir="$WT_BASE/$branch"
+
+  [ -d "$wt_dir" ] && err "worktree already exists: $wt_dir"
+
+  local base
+  base="$(resolve_base "${2:-}")"
+
+  trap '[ -d "$wt_dir" ] && git worktree remove "$wt_dir" 2>/dev/null || true' EXIT
+
+  mkdir -p "$(dirname "$wt_dir")"
+
+  if git rev-parse --verify "$branch" &>/dev/null; then
+    log "Checking out existing branch: $branch"
+    git worktree add "$wt_dir" "$branch"
+  else
+    log "Creating new branch: $branch (from $base)"
+    git worktree add "$wt_dir" -b "$branch" "$base"
+  fi
+
+  trap - EXIT
+
+  local copied=0
+  for f in "$REPO_ROOT"/.env*; do
+    [ -f "$f" ] || continue
+    cp "$f" "$wt_dir/"
+    copied=$((copied + 1))
+  done
+  [ "$copied" -gt 0 ] && log "Copied $copied .env file(s)"
+
+  (
+    cd "$wt_dir"
+
+    if [ -f pnpm-lock.yaml ]; then
+      log "Running pnpm install..."
+      pnpm install >&2
+    elif [ -f package-lock.json ]; then
+      log "Running npm install..."
+      npm install >&2
+    elif [ -f yarn.lock ]; then
+      log "Running yarn install..."
+      yarn install >&2
+    elif [ -f bun.lockb ]; then
+      log "Running bun install..."
+      bun install >&2
+    fi
+
+    if [ -f .mise.toml ] || [ -f .tool-versions ]; then
+      log "Running mise install..."
+      mise install >&2
+    fi
+    if [ -f .envrc ]; then
+      log "Running direnv allow..."
+      direnv allow >&2
+    fi
+  )
+
+  echo "cd '$wt_dir'"
+}
+
+cmd_cd() {
+  validate_git_repo
+  get_repo_info
+
+  if [ -n "${1:-}" ]; then
+    local wt_dir="$WT_BASE/$1"
+    [ -d "$wt_dir" ] || err "worktree not found: $1"
+    echo "cd '$wt_dir'"
+  else
+    local branches
+    branches="$(list_worktree_branches)"
+    local selected
+    selected="$(fuzzy_select "$branches")"
+    [ -n "$selected" ] || err "no worktree selected"
+    echo "cd '$WT_BASE/$selected'"
+  fi
+}
+
+cmd_ls() {
+  validate_git_repo
+  get_repo_info
+  [ -d "$WT_BASE" ] || err "no worktrees found"
+
+  local current_dir
+  current_dir="$(pwd -P)"
+
+  local max_branch_len=0
+  local branches=()
+  for d in "$WT_BASE"/*/; do
+    [ -d "$d" ] || continue
+    local name
+    name="$(basename "$d")"
+    branches+=("$name")
+    local len=${#name}
+    [ "$len" -gt "$max_branch_len" ] && max_branch_len=$len
+  done
+
+  for name in "${branches[@]}"; do
+    local wt_dir="$WT_BASE/$name"
+    local resolved_wt
+    resolved_wt="$(cd "$wt_dir" && pwd -P)"
+
+    local mark="  "
+    [[ "$current_dir" == "$resolved_wt"* ]] && mark="★ "
+
+    local changes
+    changes=$(git -C "$wt_dir" status --short 2>/dev/null | wc -l | tr -d ' ')
+    local status_text
+    if [ "$changes" -eq 0 ]; then
+      status_text="clean"
+    else
+      status_text="${changes} changed"
+    fi
+
+    local ahead="-" behind="-"
+    if git -C "$wt_dir" rev-parse --verify '@{upstream}' &>/dev/null 2>&1; then
+      local counts
+      counts="$(git -C "$wt_dir" rev-list --left-right --count HEAD...@{upstream} 2>/dev/null)" || true
+      if [ -n "$counts" ]; then
+        ahead="$(echo "$counts" | cut -f1)"
+        behind="$(echo "$counts" | cut -f2)"
+      fi
+    fi
+
+    local msg
+    msg="$(git -C "$wt_dir" log -1 --format='%s' 2>/dev/null || echo "(no commits)")"
+
+    printf "%s%-${max_branch_len}s  %-10s  ↑%s ↓%s  %s\n" \
+      "$mark" "$name" "$status_text" "$ahead" "$behind" "$msg"
+  done
+}
+
+cmd_rm() {
+  validate_git_repo
+  get_repo_info
+
+  local branch
+  if [ -n "${1:-}" ]; then
+    branch="$1"
+  else
+    local branches
+    branches="$(list_worktree_branches)"
+    branch="$(fuzzy_select "$branches")"
+    [ -n "$branch" ] || err "no worktree selected"
+  fi
+
+  local wt_dir="$WT_BASE/$branch"
+  [ -d "$wt_dir" ] || err "worktree not found: $branch"
+
+  local current_dir
+  current_dir="$(pwd -P)"
+  local resolved_wt
+  resolved_wt="$(cd "$wt_dir" && pwd -P)"
+  [[ "$current_dir" == "$resolved_wt"* ]] && err "cannot remove current worktree (cd out first)"
+
+  if git -C "$wt_dir" status --short | grep -q .; then
+    err "worktree has uncommitted changes: $branch"
+  fi
+
+  log "Removing worktree: $branch"
+  git worktree remove "$wt_dir"
+
+  log "Deleting local branch: $branch"
+  git branch -d "$branch" 2>/dev/null || true
+
+  git worktree prune
+  log "Done"
+}
+
+usage() {
+  cat >&2 <<EOF
+usage: wt <command> [args]
+
+commands:
+  new <branch> [base]   Create a new worktree
+  cd  [branch]          Switch to a worktree
+  ls                    List worktrees
+  rm  [branch]          Remove a worktree
+EOF
+  exit 1
+}
+
+main() {
+  case "${1:-}" in
+    new) cmd_new "${@:2}" ;;
+    cd)  cmd_cd "${@:2}" ;;
+    ls)  cmd_ls ;;
+    rm)  cmd_rm "${@:2}" ;;
+    *)   usage ;;
+  esac
+}
+
+main "$@"
