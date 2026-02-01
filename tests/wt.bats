@@ -258,3 +258,24 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot remove current worktree"* ]]
 }
+
+@test "T-16: branch with slash works for new/cd/ls/rm" {
+  cd "$REPO_DIR"
+  run wt-core new feature/auth
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cd '"*"feature/auth'"* ]]
+
+  cd "$REPO_DIR"
+  run wt-core cd feature/auth
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cd '"*"feature/auth'"* ]]
+
+  cd "$REPO_DIR"
+  run wt-core ls
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature/auth"* ]]
+
+  cd "$REPO_DIR"
+  run wt-core rm feature/auth
+  [ "$status" -eq 0 ]
+}
