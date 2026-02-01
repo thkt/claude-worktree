@@ -66,10 +66,15 @@ parse_worktrees() {
   while IFS= read -r line; do
     if [[ "$line" == worktree\ * ]]; then
       wt_path="${line#worktree }"
-    elif [[ "$line" == branch\ refs/heads/* ]] && [[ "$wt_path" == "$WT_BASE/"* ]]; then
+    elif [[ "$line" == branch\ refs/heads/* ]]; then
       local name="${line#branch refs/heads/}"
-      _WT_BRANCHES+=("$name")
-      _WT_PATHS["$name"]="$wt_path"
+      if [[ "$wt_path" == "$REPO_ROOT" ]]; then
+        _WT_BRANCHES=("$name" "${_WT_BRANCHES[@]}")
+        _WT_PATHS["$name"]="$wt_path"
+      elif [[ "$wt_path" == "$WT_BASE/"* ]]; then
+        _WT_BRANCHES+=("$name")
+        _WT_PATHS["$name"]="$wt_path"
+      fi
     elif [ -z "$line" ]; then
       wt_path=""
     fi
@@ -242,6 +247,7 @@ cmd_rm() {
 
   local wt_dir="${_WT_PATHS[$branch]:-}"
   [ -n "$wt_dir" ] || err "worktree not found: $branch"
+  [[ "$wt_dir" == "$REPO_ROOT" ]] && err "cannot remove main repository"
 
   local current_dir
   current_dir="$(pwd -P)"
