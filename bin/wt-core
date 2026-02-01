@@ -167,8 +167,8 @@ cmd_cd() {
     local selected
     selected="$(fuzzy_select "$branches")"
     [ -n "$selected" ] || err "no worktree selected"
-    local wt_dir
-    wt_dir="$(resolve_worktree_path "$selected")" || err "worktree not found: $selected"
+    local wt_dir="${_WT_PATHS[$selected]}"
+    [ -n "$wt_dir" ] || err "worktree not found: $selected"
     printf 'cd %q\n' "$wt_dir"
   fi
 }
@@ -185,8 +185,7 @@ cmd_ls() {
 
   local max_branch_len=0
   for name in "${_WT_BRANCHES[@]}"; do
-    local len=${#name}
-    [ "$len" -gt "$max_branch_len" ] && max_branch_len=$len
+    [ "${#name}" -gt "$max_branch_len" ] && max_branch_len=${#name}
   done
 
   for name in "${_WT_BRANCHES[@]}"; do
@@ -231,6 +230,7 @@ cmd_rm() {
   local branch
   if [ -n "${1:-}" ]; then
     branch="$1"
+    parse_worktrees
   else
     local branches
     branches="$(list_worktree_branches)"
@@ -238,8 +238,8 @@ cmd_rm() {
     [ -n "$branch" ] || err "no worktree selected"
   fi
 
-  local wt_dir
-  wt_dir="$(resolve_worktree_path "$branch")" || err "worktree not found: $branch"
+  local wt_dir="${_WT_PATHS[$branch]:-}"
+  [ -n "$wt_dir" ] || err "worktree not found: $branch"
 
   local current_dir
   current_dir="$(pwd -P)"
