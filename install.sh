@@ -8,7 +8,7 @@ mkdir -p "$INSTALL_DIR"
 cp "$SCRIPT_DIR/bin/wt-core" "$INSTALL_DIR/wt-core"
 chmod +x "$INSTALL_DIR/wt-core"
 
-SHELL_FUNC='wt() { if [ "${1:-}" = "ls" ]; then wt-core "$@"; else local output; output="$(wt-core "$@")" || return $?; [[ "$output" =~ ^cd\ ]] || return 1; eval "$output"; fi; }'
+SHELL_FUNC='wt() { if [ "${1:-}" = "ls" ]; then wt-core "$@"; else local output; output="$(wt-core "$@")" || return $?; local lines; lines=$(echo "$output" | wc -l); [[ "$lines" -eq 1 && "$output" =~ ^cd\  ]] || return 1; eval "$output"; fi; }'
 ZSHRC="${HOME}/.zshrc"
 
 if ! grep -q 'wt()' "$ZSHRC" 2>/dev/null; then

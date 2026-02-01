@@ -88,6 +88,13 @@ teardown() {
   [[ "$output" == *"base branch not found"* ]]
 }
 
+@test "T-04e: error when explicit base branch is invalid" {
+  cd "$REPO_DIR"
+  run wt-core new feature-bad-base nonexistent
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"branch not found: nonexistent"* ]]
+}
+
 @test "T-05: env files copied to new worktree" {
   cd "$REPO_DIR"
   echo "SECRET=abc" > .env

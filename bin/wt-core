@@ -140,7 +140,7 @@ cmd_new() {
       log "Running direnv allow..."
       direnv allow >&2
     fi
-  )
+  ) || log "Setup failed (worktree created, run setup manually)"
 
   printf 'cd %q\n' "$wt_dir"
 }
