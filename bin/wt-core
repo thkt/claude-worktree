@@ -112,7 +112,7 @@ cmd_new() {
   local copied=0
   for f in "$REPO_ROOT"/.env*; do
     [ -f "$f" ] || continue
-    cp "$f" "$wt_dir/"
+    cp -p "$f" "$wt_dir/"
     copied=$((copied + 1))
   done
   [ "$copied" -gt 0 ] && log "Copied $copied .env file(s)"
@@ -193,7 +193,7 @@ cmd_ls() {
   for name in "${_WT_BRANCHES[@]}"; do
     local wt_dir="${_WT_PATHS[$name]}"
     local resolved_wt
-    resolved_wt="$(cd "$wt_dir" && pwd -P)"
+    resolved_wt="$(cd "$wt_dir" 2>/dev/null && pwd -P)" || continue
 
     local mark="  "
     [[ "$current_dir/" == "$resolved_wt/"* ]] && mark="★ "

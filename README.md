@@ -9,7 +9,7 @@ Git worktree wrapper for parallel development. Create, switch, list, and remove 
 source ~/.zshrc
 ```
 
-Requires: `git`, `bash`, `zsh` or `bash` (shell wrapper). Optionally `sk` or `fzf` for interactive selection.
+Requires: `git`, `bash`. Shell wrapper supports `zsh` and `bash`. Optionally `sk` or `fzf` for interactive selection.
 
 Override the fuzzy finder with `WT_FUZZY_FINDER=<command>`.
 
