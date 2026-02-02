@@ -19,7 +19,7 @@ wt() {
   else
     local output
     output="$(wt-core "$@")" || return $?
-    [ -d "$output" ] || return 1
+    [ -d "$output" ] || { echo "error: unexpected output: $output" >&2; return 1; }
     cd "$output"
   fi
 }

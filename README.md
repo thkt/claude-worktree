@@ -23,7 +23,7 @@ wt new feature-auth develop    # New branch from develop
 wt new existing-branch         # Checkout existing branch
 ```
 
-Creates worktree at `../worktrees/<repo>/<branch>/`, copies `.env*` files, and auto-runs dependency install based on lockfiles.
+Creates worktree at `../worktrees/<branch>/`, copies `.env*` files, and auto-runs dependency install based on lockfiles. Branch names with `/` are converted to `-` in directory names (e.g. `feature/auth` → `feature-auth`).
 
 ### Switch to a worktree
 
@@ -70,11 +70,10 @@ On `wt new`, the following are automatically executed based on files present:
 
 ```
 parent/
-├── my-repo/                    # Main repository
+├── my-repo/              # Main repository
 └── worktrees/
-    └── my-repo/
-        ├── feature-auth/       # Worktree
-        └── bugfix-123/         # Worktree
+    ├── feature-auth/     # Worktree
+    └── bugfix-123/       # Worktree
 ```
 
 ## License

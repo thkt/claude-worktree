@@ -13,7 +13,7 @@ setup() {
   git commit --allow-empty -m "init"
 
   REPO_DIR="$TEST_DIR/test-repo"
-  WT_BASE="$TEST_DIR/worktrees/test-repo"
+  WT_BASE="$TEST_DIR/worktrees"
 }
 
 teardown() {
@@ -99,11 +99,15 @@ teardown() {
   cd "$REPO_DIR"
   echo "SECRET=abc" > .env
   echo "LOCAL=xyz" > .env.local
+  mkdir -p apps/web
+  echo "DB=pg" > apps/web/.env
   run wt-core new feature-env
   [ "$status" -eq 0 ]
   [ -f "$WT_BASE/feature-env/.env" ]
   [ -f "$WT_BASE/feature-env/.env.local" ]
   [ "$(cat "$WT_BASE/feature-env/.env")" = "SECRET=abc" ]
+  [ -f "$WT_BASE/feature-env/apps/web/.env" ]
+  [ "$(cat "$WT_BASE/feature-env/apps/web/.env")" = "DB=pg" ]
 }
 
 @test "T-06: detects pnpm from lockfile" {
@@ -270,12 +274,13 @@ EOF
   cd "$REPO_DIR"
   run wt-core new feature/auth
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feature/auth"* ]]
+  [ -d "$WT_BASE/feature-auth" ]
+  [[ "$output" == *"feature-auth"* ]]
 
   cd "$REPO_DIR"
   run wt-core cd feature/auth
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feature/auth"* ]]
+  [[ "$output" == *"feature-auth"* ]]
 
   cd "$REPO_DIR"
   run wt-core ls
@@ -288,7 +293,6 @@ EOF
 }
 
 @test "T-17: shell wrapper rejects non-directory output" {
-  # Define the wrapper function inline (same as install.sh)
   wt() {
     if [ "${1:-}" = "ls" ]; then
       wt-core "$@"
@@ -301,7 +305,6 @@ EOF
   }
 
   cd "$REPO_DIR"
-  # wt new should succeed and cd into the worktree
   wt new feature-wrapper
   [ -d "$WT_BASE/feature-wrapper" ]
   [[ "$(pwd -P)" == *"feature-wrapper"* ]]

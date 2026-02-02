@@ -17,8 +17,7 @@ get_repo_info() {
     main_git_dir="$(cd "$git_common" && pwd -P)"
     REPO_ROOT="$(dirname "$main_git_dir")"
   fi
-  REPO_NAME="$(basename "$REPO_ROOT")"
-  WT_BASE="$(dirname "$REPO_ROOT")/worktrees/$REPO_NAME"
+  WT_BASE="$(dirname "$REPO_ROOT")/worktrees"
 }
 
 resolve_base() {
@@ -93,7 +92,8 @@ cmd_new() {
   get_repo_info
 
   local branch="$1"
-  local wt_dir="$WT_BASE/$branch"
+  local dir_name="${branch//\//-}"
+  local wt_dir="$WT_BASE/$dir_name"
 
   [ -d "$wt_dir" ] && err "worktree already exists: $wt_dir"
 
@@ -115,11 +115,13 @@ cmd_new() {
   trap - EXIT
 
   local copied=0
-  for f in "$REPO_ROOT"/.env*; do
-    [ -f "$f" ] || continue
-    cp -p "$f" "$wt_dir/"
+  while IFS= read -r -d '' f; do
+    local rel="${f#"$REPO_ROOT"/}"
+    local dest="$wt_dir/$rel"
+    mkdir -p "$(dirname "$dest")"
+    cp -p "$f" "$dest"
     copied=$((copied + 1))
-  done
+  done < <(find "$REPO_ROOT" -name '.env*' -not -path '*/.git/*' -not -path '*/node_modules/*' -type f -print0)
   [ "$copied" -gt 0 ] && log "Copied $copied .env file(s)"
 
   (
