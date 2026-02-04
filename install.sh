@@ -8,6 +8,11 @@ mkdir -p "$INSTALL_DIR"
 cp "$SCRIPT_DIR/bin/wt-core" "$INSTALL_DIR/wt-core"
 chmod +x "$INSTALL_DIR/wt-core"
 
+case ":$PATH:" in
+  *":$INSTALL_DIR:"*) ;;
+  *) echo "▸ Warning: $INSTALL_DIR is not in PATH" >&2 ;;
+esac
+
 MARKER_BEGIN="# BEGIN claude-worktree"
 MARKER_END="# END claude-worktree"
 
@@ -45,12 +50,13 @@ if [ -z "$RC_FILE" ]; then
 else
   if grep -q "$MARKER_BEGIN" "$RC_FILE" 2>/dev/null; then
     tmp="$(mktemp)"
+    trap 'rm -f "$tmp"' EXIT
     awk -v begin="$MARKER_BEGIN" -v end="$MARKER_END" -v block="$SHELL_BLOCK" '
       $0 == begin { skip=1; print block; next }
       $0 == end { skip=0; next }
       !skip { print }
     ' "$RC_FILE" > "$tmp"
-    chmod --reference="$RC_FILE" "$tmp" 2>/dev/null || chmod "$(stat -f '%Lp' "$RC_FILE")" "$tmp" 2>/dev/null || true
+    chmod --reference="$RC_FILE" "$tmp" 2>/dev/null || chmod "$(stat -f '%Lp' "$RC_FILE")" "$tmp" 2>/dev/null || echo "▸ Warning: could not preserve permissions on $RC_FILE" >&2
     mv "$tmp" "$RC_FILE"
     echo "▸ Updated wt() in $RC_FILE"
   else

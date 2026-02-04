@@ -40,6 +40,7 @@ fuzzy_select() {
   local items="$1"
   local finder="${WT_FUZZY_FINDER:-}"
   if [ -n "$finder" ]; then
+    [[ "$finder" =~ ^[a-zA-Z0-9_-]+$ ]] || err "invalid fuzzy finder name: $finder"
     command -v "$finder" &>/dev/null || err "fuzzy finder not found: $finder"
     echo "$items" | "$finder"
     return
@@ -57,8 +58,13 @@ fuzzy_select() {
 _WT_BRANCHES=()
 declare -A _WT_PATHS=()
 
+# Safe associative array access for Bash 4.3 with set -u
+_get_wt_path() {
+  local key="$1"
+  [[ -n "${_WT_PATHS[$key]+x}" ]] && echo "${_WT_PATHS[$key]}"
+}
+
 parse_worktrees() {
-  git worktree prune 2>/dev/null || true
   _WT_BRANCHES=()
   _WT_PATHS=()
   local wt_path=""
@@ -90,8 +96,10 @@ cmd_new() {
   [ -z "${1:-}" ] && { echo "usage: wt new <branch> [base]" >&2; exit 1; }
   validate_git_repo
   get_repo_info
+  git worktree prune 2>/dev/null || true
 
   local branch="$1"
+  [[ "$branch" != -* ]] || err "branch name cannot start with -"
   local dir_name="${branch//\//-}"
   local wt_dir="$WT_BASE/$dir_name"
 
@@ -100,9 +108,13 @@ cmd_new() {
   local base
   base="$(resolve_base "${2:-}")"
 
-  trap '[ -d "$wt_dir" ] && git worktree remove "$wt_dir" 2>/dev/null || true' EXIT
-
   mkdir -p "$(dirname "$wt_dir")"
+
+  local wt_created=0
+  cleanup_wt() {
+    [ "$wt_created" -eq 1 ] && [ -d "$wt_dir" ] && git worktree remove "$wt_dir" 2>/dev/null || true
+  }
+  trap cleanup_wt EXIT
 
   if git rev-parse --verify "$branch" &>/dev/null; then
     log "Checking out existing branch: $branch"
@@ -111,6 +123,7 @@ cmd_new() {
     log "Creating new branch: $branch (from $base)"
     git worktree add "$wt_dir" -b "$branch" "$base" >&2
   fi
+  wt_created=1
 
   trap - EXIT
 
@@ -129,27 +142,27 @@ cmd_new() {
 
     if [ -f pnpm-lock.yaml ]; then
       log "Running pnpm install..."
-      pnpm install >&2
+      pnpm install >&2 || { log "pnpm install failed"; exit 1; }
     elif [ -f package-lock.json ]; then
       log "Running npm install..."
-      npm install >&2
+      npm install >&2 || { log "npm install failed"; exit 1; }
     elif [ -f yarn.lock ]; then
       log "Running yarn install..."
-      yarn install >&2
+      yarn install >&2 || { log "yarn install failed"; exit 1; }
     elif [ -f bun.lockb ]; then
       log "Running bun install..."
-      bun install >&2
+      bun install >&2 || { log "bun install failed"; exit 1; }
     fi
 
     if [ -f .mise.toml ] || [ -f .tool-versions ]; then
       log "Running mise install..."
-      mise install >&2
+      mise install >&2 || { log "mise install failed"; exit 1; }
     fi
     if [ -f .envrc ]; then
       log "Running direnv allow..."
-      direnv allow >&2
+      direnv allow >&2 || { log "direnv allow failed"; exit 1; }
     fi
-  ) || log "Setup failed (worktree created, run setup manually)"
+  ) || log "Setup incomplete (worktree created, run setup manually)"
 
   echo "$wt_dir"
 }
@@ -157,7 +170,8 @@ cmd_new() {
 resolve_worktree_path() {
   local target="$1"
   parse_worktrees
-  local path="${_WT_PATHS[$target]:-}"
+  local path
+  path="$(_get_wt_path "$target")"
   [ -n "$path" ] || return 1
   echo "$path"
 }
@@ -176,7 +190,8 @@ cmd_cd() {
     local selected
     selected="$(fuzzy_select "$branches")"
     [ -n "$selected" ] || err "no worktree selected"
-    local wt_dir="${_WT_PATHS[$selected]:-}"
+    local wt_dir
+    wt_dir="$(_get_wt_path "$selected")"
     [ -n "$wt_dir" ] || err "worktree not found: $selected"
     echo "$wt_dir"
   fi
@@ -198,7 +213,8 @@ cmd_ls() {
   done
 
   for name in "${_WT_BRANCHES[@]}"; do
-    local wt_dir="${_WT_PATHS[$name]:-}"
+    local wt_dir
+    wt_dir="$(_get_wt_path "$name")"
     local resolved_wt
     resolved_wt="$(cd "$wt_dir" 2>/dev/null && pwd -P)" || continue
 
@@ -215,7 +231,7 @@ cmd_ls() {
     fi
 
     local ahead="-" behind="-"
-    if git -C "$wt_dir" rev-parse --verify '@{upstream}' &>/dev/null 2>&1; then
+    if git -C "$wt_dir" rev-parse --verify '@{upstream}' &>/dev/null; then
       local counts
       counts="$(git -C "$wt_dir" rev-list --left-right --count HEAD...@{upstream} 2>/dev/null)" || true
       if [ -n "$counts" ]; then
@@ -247,7 +263,8 @@ cmd_rm() {
     [ -n "$branch" ] || err "no worktree selected"
   fi
 
-  local wt_dir="${_WT_PATHS[$branch]:-}"
+  local wt_dir
+  wt_dir="$(_get_wt_path "$branch")"
   [ -n "$wt_dir" ] || err "worktree not found: $branch"
   [[ "$wt_dir" == "$REPO_ROOT" ]] && err "cannot remove main repository"
 
@@ -265,7 +282,7 @@ cmd_rm() {
   git worktree remove "$wt_dir" >&2
 
   log "Deleting local branch: $branch"
-  git branch -d "$branch" 2>/dev/null || true
+  git branch -d "$branch" 2>/dev/null || log "Branch not deleted (not fully merged)"
 
   git worktree prune
   log "Done"

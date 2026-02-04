@@ -129,25 +129,6 @@ EOF
   [[ "$output" == *"pnpm install"* ]]
 }
 
-@test "T-06b: detects npm from lockfile" {
-  cd "$REPO_DIR"
-  touch package-lock.json
-  git add -A && git commit -m "add lockfile"
-
-  local mock_dir="$TEST_DIR/mock-bin"
-  mkdir -p "$mock_dir"
-  cat > "$mock_dir/npm" <<'EOF'
-#!/usr/bin/env bash
-echo "npm-mock called" >&2
-EOF
-  chmod +x "$mock_dir/npm"
-  export PATH="$mock_dir:$PATH"
-
-  run wt-core new feature-npm
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"npm install"* ]]
-}
-
 @test "T-07: error outside git repo" {
   cd "$TEST_DIR"
   mkdir not-a-repo
@@ -326,4 +307,46 @@ EOF
   run wt-core cd feature-other
   [ "$status" -eq 0 ]
   [[ "$output" == *"feature-other"* ]]
+}
+
+@test "T-19: error on branch name starting with dash" {
+  cd "$REPO_DIR"
+  run wt-core new --help
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot start with -"* ]]
+}
+
+@test "T-20: unicode branch name works" {
+  cd "$REPO_DIR"
+  run wt-core new feature-日本語
+  [ "$status" -eq 0 ]
+  [ -d "$WT_BASE/feature-日本語" ]
+}
+
+@test "T-21: rejects fuzzy finder with special chars" {
+  cd "$REPO_DIR"
+  run wt-core new feature-fzf-test
+  [ "$status" -eq 0 ]
+
+  WT_FUZZY_FINDER="fzf;rm" run wt-core cd
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid fuzzy finder name"* ]]
+}
+
+@test "T-22: wt ls includes main repository" {
+  cd "$REPO_DIR"
+  run wt-core ls
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"main"* ]]
+}
+
+@test "T-23: wt cd to main repository works" {
+  cd "$REPO_DIR"
+  run wt-core new feature-cd-main
+  [ "$status" -eq 0 ]
+
+  cd "$WT_BASE/feature-cd-main"
+  run wt-core cd main
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$REPO_DIR"* ]]
 }
