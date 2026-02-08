@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env zsh
 set -euo pipefail
 
 log() { echo "▸ $*" >&2; }
@@ -55,16 +55,17 @@ fuzzy_select() {
   fi
 }
 
-_WT_BRANCHES=()
-declare -A _WT_PATHS=()
+typeset -ga _WT_BRANCHES=()
+typeset -gA _WT_PATHS=()
 
-# Safe associative array access for Bash 4.3 with set -u
 _get_wt_path() {
+  typeset -gA _WT_PATHS
   local key="$1"
-  [[ -n "${_WT_PATHS[$key]+x}" ]] && echo "${_WT_PATHS[$key]}"
+  (( ${+_WT_PATHS[$key]} )) && echo "${_WT_PATHS[$key]}"
 }
 
 parse_worktrees() {
+  typeset -gA _WT_PATHS
   _WT_BRANCHES=()
   _WT_PATHS=()
   local wt_path=""
@@ -75,10 +76,10 @@ parse_worktrees() {
       local name="${line#branch refs/heads/}"
       if [[ "$wt_path" == "$REPO_ROOT" ]]; then
         _WT_BRANCHES=("$name" "${_WT_BRANCHES[@]}")
-        _WT_PATHS["$name"]="$wt_path"
+        _WT_PATHS[$name]=$wt_path
       elif [[ "$wt_path" == "$WT_BASE/"* ]]; then
         _WT_BRANCHES+=("$name")
-        _WT_PATHS["$name"]="$wt_path"
+        _WT_PATHS[$name]=$wt_path
       fi
     elif [ -z "$line" ]; then
       wt_path=""
@@ -127,10 +128,10 @@ cmd_new() {
 
   trap - EXIT
 
-  local copied=0
+  local copied=0 rel dest
   while IFS= read -r -d '' f; do
-    local rel="${f#"$REPO_ROOT"/}"
-    local dest="$wt_dir/$rel"
+    rel="${f#"$REPO_ROOT"/}"
+    dest="$wt_dir/$rel"
     mkdir -p "$(dirname "$dest")"
     cp -p "$f" "$dest"
     copied=$((copied + 1))
@@ -212,27 +213,23 @@ cmd_ls() {
     [ "${#name}" -gt "$max_branch_len" ] && max_branch_len=${#name}
   done
 
+  local wt_dir resolved_wt mark changes status_text ahead behind counts msg
   for name in "${_WT_BRANCHES[@]}"; do
-    local wt_dir
     wt_dir="$(_get_wt_path "$name")"
-    local resolved_wt
     resolved_wt="$(cd "$wt_dir" 2>/dev/null && pwd -P)" || continue
 
-    local mark="  "
+    mark="  "
     [[ "$current_dir/" == "$resolved_wt/"* ]] && mark="★ "
 
-    local changes
     changes=$(git -C "$wt_dir" status --short 2>/dev/null | wc -l | tr -d ' ')
-    local status_text
     if [ "$changes" -eq 0 ]; then
       status_text="clean"
     else
       status_text="${changes} changed"
     fi
 
-    local ahead="-" behind="-"
+    ahead="-" behind="-"
     if git -C "$wt_dir" rev-parse --verify '@{upstream}' &>/dev/null; then
-      local counts
       counts="$(git -C "$wt_dir" rev-list --left-right --count HEAD...@{upstream} 2>/dev/null)" || true
       if [ -n "$counts" ]; then
         ahead="$(echo "$counts" | cut -f1)"
@@ -240,7 +237,6 @@ cmd_ls() {
       fi
     fi
 
-    local msg
     msg="$(git -C "$wt_dir" log -1 --format='%s' 2>/dev/null || echo "(no commits)")"
 
     printf "%s%-${max_branch_len}s  %-10s  ↑%s ↓%s  %s\n" \
