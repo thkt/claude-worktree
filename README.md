@@ -6,10 +6,10 @@ Git worktree wrapper for parallel development. Create, switch, list, and remove 
 
 ```bash
 ./install.sh
-source ~/.zshrc
+source ~/.zshrc  # or ~/.bashrc for bash users
 ```
 
-Requires: `git`, `zsh`. Shell wrapper supports `zsh` and `bash`. Optionally `sk` or `fzf` for interactive selection.
+Requires: `git`, `zsh` (core script). The shell wrapper (`wt` function) works in both zsh and bash. Optionally `sk` or `fzf` for interactive selection.
 
 Override the fuzzy finder with `WT_FUZZY_FINDER=<command>`.
 
@@ -40,6 +40,7 @@ wt ls
 ```
 
 ```
+  main            clean      ↑0 ↓0  chore: initial setup
 ★ feature-auth    3 changed  ↑2 ↓0  fix: add token validation
   bugfix-123      clean      ↑0 ↓3  refactor: simplify query
   feature-api     clean      ↑0 ↓0  feat: add REST endpoints

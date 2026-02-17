@@ -51,17 +51,20 @@ else
   if grep -q "$MARKER_BEGIN" "$RC_FILE" 2>/dev/null; then
     tmp="$(mktemp)"
     trap 'rm -f "$tmp"' EXIT
-    awk -v begin="$MARKER_BEGIN" -v end="$MARKER_END" -v block="$SHELL_BLOCK" '
-      $0 == begin { skip=1; print block; next }
-      $0 == end { skip=0; next }
+    MARKER_BEGIN="$MARKER_BEGIN" MARKER_END="$MARKER_END" SHELL_BLOCK="$SHELL_BLOCK" \
+    awk '
+      $0 == ENVIRON["MARKER_BEGIN"] { skip=1; print ENVIRON["SHELL_BLOCK"]; next }
+      $0 == ENVIRON["MARKER_END"] { skip=0; next }
       !skip { print }
     ' "$RC_FILE" > "$tmp"
     [ -s "$tmp" ] || { rm -f "$tmp"; echo "error: failed to generate updated RC file" >&2; exit 1; }
     cp -p "$RC_FILE" "${RC_FILE}.bak"
-    chmod --reference="$RC_FILE" "$tmp" 2>/dev/null || chmod "$(stat -f '%Lp' "$RC_FILE")" "$tmp" 2>/dev/null || echo "▸ Warning: could not preserve permissions on $RC_FILE" >&2
+    orig_perms="$(stat -f '%Lp' "$RC_FILE" 2>/dev/null)" || \
+      orig_perms="$(stat -c '%a' "$RC_FILE" 2>/dev/null)" || \
+      orig_perms="644"
+    chmod "$orig_perms" "$tmp"
     mv "$tmp" "$RC_FILE"
-    rm -f "${RC_FILE}.bak"
-    echo "▸ Updated wt() in $RC_FILE"
+    echo "▸ Updated wt() in $RC_FILE (backup: ${RC_FILE}.bak)"
   else
     echo "" >> "$RC_FILE"
     echo "$SHELL_BLOCK" >> "$RC_FILE"

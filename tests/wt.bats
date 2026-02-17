@@ -61,13 +61,6 @@ teardown() {
   [ "$msg" = "develop commit" ]
 }
 
-@test "T-04: auto-detects main as base branch" {
-  cd "$REPO_DIR"
-  run wt-core new feature-auto
-  [ "$status" -eq 0 ]
-  [ -d "$WT_BASE/feature-auto" ]
-}
-
 @test "T-04b: auto-detects develop when main absent" {
   cd "$REPO_DIR"
   git branch develop
@@ -100,7 +93,6 @@ teardown() {
   [[ "$output" == *"branch not found: nonexistent"* ]]
 }
 
-# Note: relies on non-interactive mode ([ -t 2 ] = false in bats) to skip prompt
 @test "T-05: env files copied to new worktree" {
   cd "$REPO_DIR"
   echo "SECRET=abc" > .env
@@ -372,11 +364,14 @@ EOF
   [[ "$output" == *"unknown option"* ]]
 }
 
-@test "T-26: error on branch name with unsafe characters" {
+@test "T-26: error on branch name with invalid characters" {
   cd "$REPO_DIR"
-  run wt-core new 'feature branch'
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"invalid branch name"* ]]
+  local -a bad_names=('feature branch' 'feature/' 'feature~1' 'feature:name' 'feature[0]' 'feat^rev')
+  for name in "${bad_names[@]}"; do
+    run wt-core new "$name"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"invalid branch name"* ]]
+  done
 }
 
 @test "T-27: error on branch name with path traversal" {
@@ -384,4 +379,38 @@ EOF
   run wt-core new 'feature/../etc'
   [ "$status" -ne 0 ]
   [[ "$output" == *"invalid branch name"* ]]
+}
+
+@test "T-28: wt rm refuses to remove main repository" {
+  cd "$REPO_DIR"
+  run wt-core rm main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot remove main repository"* ]]
+}
+
+@test "T-29: wt new with no arguments shows usage" {
+  cd "$REPO_DIR"
+  run wt-core new
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"usage:"* ]]
+}
+
+@test "T-30: wt new -- allows branch after option terminator" {
+  cd "$REPO_DIR"
+  run wt-core new -- feature-terminated
+  [ "$status" -eq 0 ]
+  [ -d "$WT_BASE/feature-terminated" ]
+}
+
+@test "T-31: directory collision detected for slash vs dash" {
+  cd "$REPO_DIR"
+  run wt-core new feature/collide
+  [ "$status" -eq 0 ]
+  [ -d "$WT_BASE/feature-collide" ]
+
+  git branch feature-collide 2>/dev/null || true
+  cd "$REPO_DIR"
+  run wt-core new feature-collide
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"collision"* ]] || [[ "$output" == *"already exists"* ]]
 }
