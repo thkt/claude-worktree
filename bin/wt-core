@@ -228,6 +228,7 @@ cmd_cd() {
     branches="$(list_worktree_branches)"
     branch="$(fuzzy_select "$branches")"
     [ -n "$branch" ] || err "no worktree selected"
+    parse_worktrees
   else
     parse_worktrees
   fi
@@ -253,6 +254,8 @@ cmd_ls() {
     [ "${#name}" -gt "$max_branch_len" ] && max_branch_len=${#name}
   done
 
+  # Build lines: wt_dir<TAB>display_text
+  local -a lines=()
   local wt_dir resolved_wt mark changes status_text ahead behind msg
   for name in "${_WT_BRANCHES[@]}"; do
     wt_dir="$(_get_wt_path "$name")"
@@ -281,9 +284,48 @@ cmd_ls() {
 
     msg="$(git -C "$wt_dir" log -1 --format='%s' 2>/dev/null || echo "(no commits)")"
 
-    printf "%s%-${max_branch_len}s  %-10s  ↑%s ↓%s  %s\n" \
-      "$mark" "$name" "$status_text" "$ahead" "$behind" "$msg"
+    lines+=("$(printf "%s\t%s%-${max_branch_len}s  %-10s  ↑%s ↓%s  %s" \
+      "$wt_dir" "$mark" "$name" "$status_text" "$ahead" "$behind" "$msg")")
   done
+
+  # Display: fzf/sk with preview if interactive, plain table otherwise
+  local finder=""
+  if [ -t 2 ]; then
+    if command -v sk &>/dev/null; then
+      finder="sk"
+    elif command -v fzf &>/dev/null; then
+      finder="fzf"
+    fi
+  fi
+
+  if [ -n "$finder" ]; then
+    printf '%s\n' "${lines[@]}" | "$finder" \
+      --delimiter=$'\t' \
+      --with-nth=2.. \
+      --no-sort \
+      --preview='
+        dir={1}
+        printf "\033[1mRecent Commits\033[0m\n"
+        printf "────────────────────────────────────────\n"
+        git -C "$dir" log --oneline --color=always -10 2>/dev/null || printf "  (no commits)\n"
+        printf "\n"
+        printf "\033[1mChanges\033[0m\n"
+        printf "────────────────────────────────────────\n"
+        changes="$(git -C "$dir" status --short 2>/dev/null)"
+        if [ -n "$changes" ]; then
+          printf "%s\n" "$changes"
+        else
+          printf "  (clean)\n"
+        fi
+      ' \
+      --preview-window='right:50%:wrap' \
+      > /dev/null || true
+  else
+    local line
+    for line in "${lines[@]}"; do
+      echo "${line#*	}"
+    done
+  fi
 }
 
 cmd_rm() {
@@ -299,6 +341,7 @@ cmd_rm() {
     branches="$(list_worktree_branches)"
     branch="$(fuzzy_select "$branches")"
     [ -n "$branch" ] || err "no worktree selected"
+    parse_worktrees
   fi
 
   local wt_dir
