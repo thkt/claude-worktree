@@ -56,8 +56,11 @@ else
       $0 == end { skip=0; next }
       !skip { print }
     ' "$RC_FILE" > "$tmp"
+    [ -s "$tmp" ] || { rm -f "$tmp"; echo "error: failed to generate updated RC file" >&2; exit 1; }
+    cp -p "$RC_FILE" "${RC_FILE}.bak"
     chmod --reference="$RC_FILE" "$tmp" 2>/dev/null || chmod "$(stat -f '%Lp' "$RC_FILE")" "$tmp" 2>/dev/null || echo "▸ Warning: could not preserve permissions on $RC_FILE" >&2
     mv "$tmp" "$RC_FILE"
+    rm -f "${RC_FILE}.bak"
     echo "▸ Updated wt() in $RC_FILE"
   else
     echo "" >> "$RC_FILE"

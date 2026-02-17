@@ -9,7 +9,7 @@ Git worktree wrapper for parallel development. Create, switch, list, and remove 
 source ~/.zshrc
 ```
 
-Requires: `git`, `bash`. Shell wrapper supports `zsh` and `bash`. Optionally `sk` or `fzf` for interactive selection.
+Requires: `git`, `zsh`. Shell wrapper supports `zsh` and `bash`. Optionally `sk` or `fzf` for interactive selection.
 
 Override the fuzzy finder with `WT_FUZZY_FINDER=<command>`.
 
@@ -21,9 +21,10 @@ Override the fuzzy finder with `WT_FUZZY_FINDER=<command>`.
 wt new feature-auth            # New branch from main
 wt new feature-auth develop    # New branch from develop
 wt new existing-branch         # Checkout existing branch
+wt new --no-env feature-auth   # Skip .env file copy
 ```
 
-Creates worktree at `../worktrees/<branch>/`, copies `.env*` files, and auto-runs dependency install based on lockfiles. Branch names with `/` are converted to `-` in directory names (e.g. `feature/auth` → `feature-auth`).
+Creates worktree at `../worktrees/<branch>/`, copies `.env*` files (with confirmation in interactive mode), and auto-runs dependency install based on lockfiles. Branch names with `/` are converted to `-` in directory names (e.g. `feature/auth` → `feature-auth`).
 
 ### Switch to a worktree
 

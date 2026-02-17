@@ -36,6 +36,14 @@ resolve_base() {
   err "base branch not found (tried: main, develop, master)"
 }
 
+validate_branch_name() {
+  local branch="$1"
+  [[ "$branch" != -* ]] || err "branch name cannot start with -"
+  [[ "$branch" != *..* ]] || err "invalid branch name: $branch"
+  [[ "$branch" != */ ]] || err "invalid branch name: $branch"
+  [[ ! "$branch" =~ [[:cntrl:][:space:]\~\^\:\?\*\[\\] ]] || err "invalid branch name: $branch"
+}
+
 fuzzy_select() {
   local items="$1"
   local finder="${WT_FUZZY_FINDER:-}"
@@ -55,6 +63,7 @@ fuzzy_select() {
   fi
 }
 
+# Populated by parse_worktrees(), used by list_worktree_branches() and _get_wt_path()
 typeset -ga _WT_BRANCHES=()
 typeset -gA _WT_PATHS=()
 
@@ -93,51 +102,42 @@ list_worktree_branches() {
   printf '%s\n' "${_WT_BRANCHES[@]}"
 }
 
-cmd_new() {
-  [ -z "${1:-}" ] && { echo "usage: wt new <branch> [base]" >&2; exit 1; }
-  validate_git_repo
-  get_repo_info
-  git worktree prune 2>/dev/null || true
-
-  local branch="$1"
-  [[ "$branch" != -* ]] || err "branch name cannot start with -"
-  local dir_name="${branch//\//-}"
-  local wt_dir="$WT_BASE/$dir_name"
-
-  [ -d "$wt_dir" ] && err "worktree already exists: $wt_dir"
-
-  local base
-  base="$(resolve_base "${2:-}")"
-
-  mkdir -p "$(dirname "$wt_dir")"
-
-  local wt_created=0
-  cleanup_wt() {
-    [ "$wt_created" -eq 1 ] && [ -d "$wt_dir" ] && git worktree remove "$wt_dir" 2>/dev/null || true
-  }
-  trap cleanup_wt EXIT
-
-  if git rev-parse --verify "$branch" &>/dev/null; then
-    log "Checking out existing branch: $branch"
-    git worktree add "$wt_dir" "$branch" >&2
-  else
-    log "Creating new branch: $branch (from $base)"
-    git worktree add "$wt_dir" -b "$branch" "$base" >&2
-  fi
-  wt_created=1
-
-  trap - EXIT
-
-  local copied=0 rel dest
+copy_env_files() {
+  local repo_root="$1" wt_dir="$2"
+  local -a files=()
   while IFS= read -r -d '' f; do
-    rel="${f#"$REPO_ROOT"/}"
+    files+=("$f")
+  done < <(find "$repo_root" -name '.env*' -not -path '*/.git/*' -not -path '*/node_modules/*' -type f -print0)
+
+  [ "${#files[@]}" -eq 0 ] && return 0
+
+  log "Found ${#files[@]} .env file(s):"
+  local rel
+  for f in "${files[@]}"; do
+    rel="${f#"$repo_root"/}"
+    echo "  $rel" >&2
+  done
+
+  if [ -t 2 ]; then
+    printf "Copy to new worktree? [Y/n] " >&2
+    local reply
+    read -r reply </dev/tty || reply=""
+    [[ "$reply" =~ ^[Nn] ]] && { log "Skipped .env copy"; return 0; }
+  fi
+
+  local copied=0 dest
+  for f in "${files[@]}"; do
+    rel="${f#"$repo_root"/}"
     dest="$wt_dir/$rel"
     mkdir -p "$(dirname "$dest")"
     cp -p "$f" "$dest"
     copied=$((copied + 1))
-  done < <(find "$REPO_ROOT" -name '.env*' -not -path '*/.git/*' -not -path '*/node_modules/*' -type f -print0)
-  [ "$copied" -gt 0 ] && log "Copied $copied .env file(s)"
+  done
+  log "Copied $copied .env file(s)"
+}
 
+run_setup() {
+  local wt_dir="$1"
   (
     cd "$wt_dir"
 
@@ -163,39 +163,79 @@ cmd_new() {
       log "Running direnv allow..."
       direnv allow >&2 || { log "direnv allow failed"; exit 1; }
     fi
-  ) || log "Setup incomplete (worktree created, run setup manually)"
-
-  echo "$wt_dir"
+  )
 }
 
-resolve_worktree_path() {
-  local target="$1"
-  parse_worktrees
-  local path
-  path="$(_get_wt_path "$target")"
-  [ -n "$path" ] || return 1
-  echo "$path"
+cmd_new() {
+  local no_env=0
+  while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+      --no-env) no_env=1; shift ;;
+      *) err "unknown option: $1" ;;
+    esac
+  done
+
+  [ -z "${1:-}" ] && { echo "usage: wt new [--no-env] <branch> [base]" >&2; exit 1; }
+  validate_git_repo
+  get_repo_info
+  git worktree prune 2>/dev/null || log "warning: git worktree prune failed"
+
+  local branch="$1"
+  validate_branch_name "$branch"
+  local dir_name="${branch//\//-}"
+  local wt_dir="$WT_BASE/$dir_name"
+
+  [ -d "$wt_dir" ] && err "worktree already exists: $wt_dir"
+
+  local base
+  base="$(resolve_base "${2:-}")"
+
+  mkdir -p "$(dirname "$wt_dir")"
+
+  cleanup_wt() {
+    [ -d "$wt_dir" ] && git worktree remove "$wt_dir" 2>/dev/null || true
+  }
+  trap cleanup_wt EXIT
+
+  if git rev-parse --verify "$branch" &>/dev/null; then
+    log "Checking out existing branch: $branch"
+    git worktree add "$wt_dir" "$branch" >&2
+  else
+    log "Creating new branch: $branch (from $base)"
+    git worktree add "$wt_dir" -b "$branch" "$base" >&2
+  fi
+
+  trap - EXIT
+
+  if [ "$no_env" -eq 0 ]; then
+    copy_env_files "$REPO_ROOT" "$wt_dir" || log "warning: .env copy incomplete"
+  fi
+
+  if ! run_setup "$wt_dir"; then
+    log "WARNING: setup incomplete — worktree created, run setup manually"
+  fi
+
+  echo "$wt_dir"
 }
 
 cmd_cd() {
   validate_git_repo
   get_repo_info
 
-  if [ -n "${1:-}" ]; then
-    local wt_dir
-    wt_dir="$(resolve_worktree_path "$1")" || err "worktree not found: $1"
-    echo "$wt_dir"
-  else
+  local branch="${1:-}"
+  if [ -z "$branch" ]; then
     local branches
     branches="$(list_worktree_branches)"
-    local selected
-    selected="$(fuzzy_select "$branches")"
-    [ -n "$selected" ] || err "no worktree selected"
-    local wt_dir
-    wt_dir="$(_get_wt_path "$selected")"
-    [ -n "$wt_dir" ] || err "worktree not found: $selected"
-    echo "$wt_dir"
+    branch="$(fuzzy_select "$branches")"
+    [ -n "$branch" ] || err "no worktree selected"
+  else
+    parse_worktrees
   fi
+
+  local wt_dir
+  wt_dir="$(_get_wt_path "$branch")" || true
+  [ -n "$wt_dir" ] || err "worktree not found: $branch"
+  echo "$wt_dir"
 }
 
 cmd_ls() {
@@ -213,7 +253,7 @@ cmd_ls() {
     [ "${#name}" -gt "$max_branch_len" ] && max_branch_len=${#name}
   done
 
-  local wt_dir resolved_wt mark changes status_text ahead behind counts msg
+  local wt_dir resolved_wt mark changes status_text ahead behind msg
   for name in "${_WT_BRANCHES[@]}"; do
     wt_dir="$(_get_wt_path "$name")"
     resolved_wt="$(cd "$wt_dir" 2>/dev/null && pwd -P)" || continue
@@ -221,7 +261,9 @@ cmd_ls() {
     mark="  "
     [[ "$current_dir/" == "$resolved_wt/"* ]] && mark="★ "
 
-    changes=$(git -C "$wt_dir" status --short 2>/dev/null | wc -l | tr -d ' ')
+    local status_output
+    status_output="$(git -C "$wt_dir" status --porcelain -b 2>/dev/null)" || continue
+    changes=$(( $(echo "$status_output" | wc -l | tr -d ' ') - 1 ))
     if [ "$changes" -eq 0 ]; then
       status_text="clean"
     else
@@ -229,12 +271,12 @@ cmd_ls() {
     fi
 
     ahead="-" behind="-"
-    if git -C "$wt_dir" rev-parse --verify '@{upstream}' &>/dev/null; then
-      counts="$(git -C "$wt_dir" rev-list --left-right --count HEAD...@{upstream} 2>/dev/null)" || true
-      if [ -n "$counts" ]; then
-        ahead="$(echo "$counts" | cut -f1)"
-        behind="$(echo "$counts" | cut -f2)"
-      fi
+    local header
+    header="$(echo "$status_output" | head -1)"
+    if [[ "$header" == *"..."* ]]; then
+      ahead="0" behind="0"
+      [[ "$header" =~ "ahead ([0-9]+)" ]] && ahead="${match[1]}"
+      [[ "$header" =~ "behind ([0-9]+)" ]] && behind="${match[1]}"
     fi
 
     msg="$(git -C "$wt_dir" log -1 --format='%s' 2>/dev/null || echo "(no commits)")"
@@ -289,10 +331,10 @@ usage() {
 usage: wt <command> [args]
 
 commands:
-  new <branch> [base]   Create a new worktree
-  cd  [branch]          Switch to a worktree
-  ls                    List worktrees
-  rm  [branch]          Remove a worktree
+  new [--no-env] <branch> [base]   Create a new worktree
+  cd  [branch]                     Switch to a worktree
+  ls                               List worktrees
+  rm  [branch]                     Remove a worktree
 EOF
   exit 1
 }

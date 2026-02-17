@@ -18,7 +18,12 @@ setup() {
 
 teardown() {
   cd /
-  [ -n "${TEST_DIR:-}" ] && rm -rf "$TEST_DIR"
+  if [ -n "${TEST_DIR:-}" ] && [ -d "$TEST_DIR" ]; then
+    case "$TEST_DIR" in
+      /tmp/*|/private/*|/var/folders/*) rm -rf "$TEST_DIR" ;;
+      *) echo "WARNING: refusing to rm unexpected TEST_DIR: $TEST_DIR" >&2 ;;
+    esac
+  fi
 }
 
 @test "T-01: wt new creates worktree at correct path" {
@@ -95,6 +100,7 @@ teardown() {
   [[ "$output" == *"branch not found: nonexistent"* ]]
 }
 
+# Note: relies on non-interactive mode ([ -t 2 ] = false in bats) to skip prompt
 @test "T-05: env files copied to new worktree" {
   cd "$REPO_DIR"
   echo "SECRET=abc" > .env
@@ -311,7 +317,7 @@ EOF
 
 @test "T-19: error on branch name starting with dash" {
   cd "$REPO_DIR"
-  run wt-core new --help
+  run wt-core new -badname
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot start with -"* ]]
 }
@@ -349,4 +355,33 @@ EOF
   run wt-core cd main
   [ "$status" -eq 0 ]
   [[ "$output" == *"$REPO_DIR"* ]]
+}
+
+@test "T-24: wt new --no-env skips env file copy" {
+  cd "$REPO_DIR"
+  echo "SECRET=abc" > .env
+  run wt-core new --no-env feature-noenv
+  [ "$status" -eq 0 ]
+  [ ! -f "$WT_BASE/feature-noenv/.env" ]
+}
+
+@test "T-25: error on unknown option" {
+  cd "$REPO_DIR"
+  run wt-core new --invalid feature-x
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown option"* ]]
+}
+
+@test "T-26: error on branch name with unsafe characters" {
+  cd "$REPO_DIR"
+  run wt-core new 'feature branch'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid branch name"* ]]
+}
+
+@test "T-27: error on branch name with path traversal" {
+  cd "$REPO_DIR"
+  run wt-core new 'feature/../etc'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid branch name"* ]]
 }
